@@ -1,0 +1,39 @@
+services:
+  users:
+    build:
+      context: ./microservices/users
+    ports:
+      - "8080:8000"
+    environment:
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,users
+    networks:
+      - classrooms
+
+  spaces:
+    build:
+      context: ./microservices/spaces
+    ports:
+      - "8082:8000"
+    environment:
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,spaces
+    networks:
+      - classrooms
+
+  reservations:
+    build:
+      context: ./microservices/reservations
+    ports:
+      - "8081:8000"
+    environment:
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,reservations
+      USERS_SERVICE_URL: http://users:8000
+      SPACES_SERVICE_URL: http://spaces:8000
+    depends_on:
+      - users
+      - spaces
+    networks:
+      - classrooms
+
+networks:
+  classrooms:
+    driver: bridge
