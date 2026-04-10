@@ -1,16 +1,39 @@
+# ============================================================
+# .gitignore — Espacios Universitarios UFPS
+# ============================================================
+
 # --- OS & editors ---
 .DS_Store
 Thumbs.db
 *.swp
 *.swo
 *~
+.idea/
+.vscode/
+*.iml
 
-# --- Python ---
+# --- Environment & secrets (NUNCA subir) ---
+.env
+.env.*
+!.env.example
+!.env*.example
+*.pem
+*.key
+secrets/
+
+# --- Claude Code ---
+.claude/
+
+# ============================================================
+# Python / Django
+# ============================================================
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+
+# Build / dist
 build/
 develop-eggs/
 dist/
@@ -26,93 +49,74 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Logs & misc
 pip-log.txt
 pip-delete-this-directory.txt
+*.log
+local_settings.py
+
+# Bases de datos locales
+db.sqlite3
+db.sqlite3-journal
+
+# Testing
 .tox/
 .nox/
 .hypothesis/
 .pytest_cache/
-cover/
+coverage/
 *.cover
 *.py,cover
-.cache
 nosetests.xml
 coverage.xml
-*.mo
-*.pot
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-instance/
-.webassets-cache
-.scrapy
-docs/_build/
-.pybuilder/
-target/
-.ipynb_checkpoints
-profile_default/
-ipython_config.py
-.pdm.toml
-.pdm-python
-.pdm-build/
-__pypackages__/
-celerybeat-schedule
-celerybeat.pid
-*.sage.py
-.spyderproject
-.spyproject
-.ropeproject
-/site
+
+# Type checkers
 .mypy_cache/
 .dmypy.json
 dmypy.json
 .pyre/
 .pytype/
-cython_debug/
 
-# Virtual environments
+# Entornos virtuales
 .venv/
 venv/
 ENV/
 env/
 
-# --- Django --- 
+# Django
 **/media/
 **/staticfiles/
 
-# --- Environment & secrets ---
-.env
-.env.*
-!.env.example
-!.env*.example
-*.pem
-
-# --- Node / Next.js ---
+# ============================================================
+# Node / Next.js
+# ============================================================
 node_modules/
+
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
-.npm
-.eslintcache
-.node_repl_history
-*.tgz
-.yarn-integrity
 
-# Next.js
+# Next.js build
 .next/
 out/
 
-# Turbopack / tooling
+# Misc tooling
 .turbo/
-
-# Vercel
 .vercel
-
-# TypeScript
+.eslintcache
 *.tsbuildinfo
-
-# Testing / coverage (JS)
-coverage/
+.node_repl_history
+*.tgz
+.yarn-integrity
+.npm
 .nyc_output/
+
+# ============================================================
+# Docker
+# ============================================================
+# No ignorar docker-compose.yml ni Dockerfile — son parte del proyecto
+# Ignorar overrides locales si los hubiera
+docker-compose.override.yml

@@ -6,6 +6,10 @@ services:
       - "8080:8000"
     environment:
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,users
+      DATABASE_URL: ${USERS_DATABASE_URL}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-in-production}
+      JWT_ACCESS_TOKEN_EXPIRE_HOURS: ${JWT_ACCESS_TOKEN_EXPIRE_HOURS:-1}
+      JWT_REFRESH_TOKEN_EXPIRE_DAYS: ${JWT_REFRESH_TOKEN_EXPIRE_DAYS:-7}
     networks:
       - classrooms
 
