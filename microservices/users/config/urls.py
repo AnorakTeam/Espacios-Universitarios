@@ -23,6 +23,17 @@ urlpatterns = [
     path('api/v1/users/me/', api.UpdateProfileAPIView.as_view()),
 
     # ------------------------------------------------------------------ #
+    # HU-04 — Recuperación de contraseña (reset)                         #
+    # ------------------------------------------------------------------ #
+    path('api/v1/auth/reset-password/', api.ResetPasswordAPIView.as_view()),
+
+    # ------------------------------------------------------------------ #
+    # Admin — HU-16, 17, 18, 19                                          #
+    # ------------------------------------------------------------------ #
+    path('api/v1/admin/users/', api.AdminUserListCreateAPIView.as_view()),
+    path('api/v1/admin/users/<uuid:pk>/', api.AdminUserDetailAPIView.as_view()),
+
+    # ------------------------------------------------------------------ #
     # Endpoints internos (consumidos por otros microservicios)            #
     # ------------------------------------------------------------------ #
     path('api/v1/users/resolve/', api.UserResolveAPIView.as_view()),

@@ -30,10 +30,11 @@ def verify_password(plain: str, hashed: str) -> bool:
 # Tokens JWT
 # ---------------------------------------------------------------------------
 
-def generate_access_token(user_id: str) -> str:
+def generate_access_token(user_id: str, role_name: str = '') -> str:
     """Genera un access token JWT con expiración configurada en settings."""
     payload = {
         'user_id': user_id,
+        'role': role_name,
         'exp': datetime.datetime.utcnow() + datetime.timedelta(
             hours=settings.JWT_ACCESS_TOKEN_EXPIRE_HOURS
         ),

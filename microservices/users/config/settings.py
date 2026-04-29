@@ -5,6 +5,27 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# ---------------------------------------------------------------------------
+# Cargar variables del .env raiz si DATABASE_URL no está en el entorno
+# ---------------------------------------------------------------------------
+def _load_root_env():
+    env_path = BASE_DIR.parent.parent / '.env'
+    if not env_path.exists():
+        return
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, value = line.split('=', 1)
+            key, value = key.strip(), value.strip()
+            if key not in os.environ:
+                os.environ[key] = value
+    if 'DATABASE_URL' not in os.environ and 'USERS_DATABASE_URL' in os.environ:
+        os.environ['DATABASE_URL'] = os.environ['USERS_DATABASE_URL']
+
+_load_root_env()
+
 SECRET_KEY = os.environ.get(
     'DJANGO_SECRET_KEY',
     'django-insecure-$z1)dtd7okx8zru&oxlyv*xszahjc@higmk=nqk(z-3b9&zxa-',

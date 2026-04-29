@@ -1,47 +1,151 @@
-"use client";
+"use client"
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from 'react'
+import { spacesApi } from '@/lib/apiClient'
 
-const SPACES = [
-  { id: "1", code: "SB-101", name: "Aula 101", area: "Edificio SB", floor: 1, capacity: 40, type: "Aula", status: "operational", hasAC: true, hasProjector: true, hasComputers: false },
-  { id: "2", code: "SB-102", name: "Aula 102", area: "Edificio SB", floor: 1, capacity: 35, type: "Aula", status: "operational", hasAC: false, hasProjector: true, hasComputers: false },
-  { id: "3", code: "SB-201", name: "Laboratorio de Sistemas", area: "Edificio SB", floor: 2, capacity: 30, type: "Laboratorio", status: "operational", hasAC: true, hasProjector: true, hasComputers: true },
-  { id: "4", code: "SB-202", name: "Laboratorio de Redes", area: "Edificio SB", floor: 2, capacity: 25, type: "Laboratorio", status: "maintenance", hasAC: true, hasProjector: false, hasComputers: true },
-  { id: "5", code: "SB-301", name: "Sala de Conferencias A", area: "Edificio SB", floor: 3, capacity: 60, type: "Auditorio", status: "operational", hasAC: true, hasProjector: true, hasComputers: false },
-  { id: "6", code: "SB-302", name: "Sala de Conferencias B", area: "Edificio SB", floor: 3, capacity: 80, type: "Auditorio", status: "operational", hasAC: true, hasProjector: true, hasComputers: false },
-  { id: "7", code: "SB-401", name: "Aula de Postgrado", area: "Edificio SB", floor: 4, capacity: 20, type: "Aula", status: "operational", hasAC: true, hasProjector: true, hasComputers: false },
-  { id: "8", code: "SB-402", name: "Laboratorio de Electrónica", area: "Edificio SB", floor: 4, capacity: 20, type: "Laboratorio", status: "operational", hasAC: false, hasProjector: false, hasComputers: false },
-];
+const TYPES = ['Todos', 'Aula', 'Laboratorio', 'Auditorio', 'Sala']
 
 const typeColors = {
-  Aula: { bg: "#EBF5FB", color: "#1A5276", border: "#AED6F1" },
-  Laboratorio: { bg: "#EAFAF1", color: "#1E8449", border: "#A9DFBF" },
-  Auditorio: { bg: "#FEF9E7", color: "#9A7D0A", border: "#F9E79F" },
-};
+  Aula: { bg: '#EBF5FB', color: '#1A5276', border: '#AED6F1' },
+  Laboratorio: { bg: '#EAFAF1', color: '#1E8449', border: '#A9DFBF' },
+  Auditorio: { bg: '#FEF9E7', color: '#9A7D0A', border: '#F9E79F' },
+  Sala: { bg: '#F5EEF8', color: '#6C3483', border: '#D2B4DE' },
+}
+
+const statusLabels = {
+  operational: { label: 'Operacional', bg: '#D5F5E3', color: '#1E8449' },
+  maintenance: { label: 'Mantenimiento', bg: '#FDEDEC', color: '#C0392B' },
+  inactive: { label: 'Inactivo', bg: '#F3F4F6', color: '#9CA3AF' },
+}
+
+const ROLES_OPTIONS = ['Estudiante', 'Docente', 'Administrativo', 'Admin']
+
+const EMPTY_FORM = {
+  name: '',
+  code: '',
+  description: '',
+  space_type: 'Aula',
+  capacity: '',
+  floor: '',
+  area_id: '',
+  status: 'operational',
+  allowed_roles: [],
+}
 
 export default function AdminSpacesPage() {
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("Todos");
-  const [spaces, setSpaces] = useState(SPACES);
-  const [showModal, setShowModal] = useState(false);
-  const [editSpace, setEditSpace] = useState(null);
+  const [spaces, setSpaces] = useState([])
+  const [total, setTotal] = useState(0)
+  const [areas, setAreas] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState('Todos')
+  const [showModal, setShowModal] = useState(false)
+  const [editSpace, setEditSpace] = useState(null)
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [formError, setFormError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [actionError, setActionError] = useState('')
 
-  const types = ["Todos", "Aula", "Laboratorio", "Auditorio"];
+  // Cargar áreas una vez
+  useEffect(() => {
+    spacesApi.listAreas().then((data) => setAreas(Array.isArray(data) ? data : data.results || [])).catch(() => {})
+  }, [])
 
-  const filtered = spaces.filter((s) => {
-    const q = search.toLowerCase();
-    const matchSearch = s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q);
-    const matchType = typeFilter === "Todos" || s.type === typeFilter;
-    return matchSearch && matchType;
-  });
+  const fetchSpaces = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = { include_inactive: 'true' }
+      if (search) params.search = search
+      if (typeFilter !== 'Todos') params.type = typeFilter
+      const data = await spacesApi.list(params)
+      setSpaces(data.results || data)
+      setTotal(data.count ?? (data.results?.length ?? (Array.isArray(data) ? data.length : 0)))
+    } catch {
+      setSpaces([])
+    } finally {
+      setLoading(false)
+    }
+  }, [search, typeFilter])
 
-  const toggleStatus = (id) => {
-    setSpaces(spaces.map((s) =>
-      s.id === id
-        ? { ...s, status: s.status === "operational" ? "maintenance" : "operational" }
-        : s
-    ));
-  };
+  useEffect(() => {
+    const t = setTimeout(fetchSpaces, 300)
+    return () => clearTimeout(t)
+  }, [fetchSpaces])
+
+  const openCreate = () => {
+    setEditSpace(null)
+    setForm({ ...EMPTY_FORM, area_id: areas[0]?.id || '' })
+    setFormError('')
+    setShowModal(true)
+  }
+
+  const openEdit = (space) => {
+    setEditSpace(space)
+    setForm({
+      name: space.name,
+      code: space.code,
+      description: space.description || '',
+      space_type: space.space_type || 'Aula',
+      capacity: space.capacity,
+      floor: space.floor || '',
+      area_id: space.area?.id || '',
+      status: space.status,
+      allowed_roles: space.allowed_roles || [],
+    })
+    setFormError('')
+    setShowModal(true)
+  }
+
+  const handleSave = async (e) => {
+    e.preventDefault()
+    setFormError('')
+    setSaving(true)
+    try {
+      const payload = {
+        ...form,
+        capacity: parseInt(form.capacity) || 0,
+        floor: form.floor ? parseInt(form.floor) : null,
+      }
+      if (editSpace) {
+        await spacesApi.update(editSpace.id, payload)
+      } else {
+        await spacesApi.create(payload)
+      }
+      setShowModal(false)
+      fetchSpaces()
+    } catch (err) {
+      setFormError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (space) => {
+    setActionError('')
+    if (!confirm(`¿Desactivar "${space.name}"?`)) return
+    try {
+      await spacesApi.delete(space.id)
+      fetchSpaces()
+    } catch (err) {
+      setActionError(err.message)
+    }
+  }
+
+  const toggleRole = (role) => {
+    setForm((f) => ({
+      ...f,
+      allowed_roles: f.allowed_roles.includes(role)
+        ? f.allowed_roles.filter((r) => r !== role)
+        : [...f.allowed_roles, role],
+    }))
+  }
+
+  const stats = {
+    total,
+    aulas: spaces.filter((s) => s.space_type === 'Aula').length,
+    laboratorios: spaces.filter((s) => s.space_type === 'Laboratorio').length,
+    mantenimiento: spaces.filter((s) => s.status === 'maintenance').length,
+  }
 
   return (
     <div className="p-8">
@@ -49,16 +153,14 @@ export default function AdminSpacesPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Gestión de Espacios</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            Administra el inventario de espacios universitarios
-          </p>
+          <p className="text-gray-500 text-sm mt-1">Administra el inventario de espacios universitarios</p>
         </div>
         <button
-          onClick={() => { setEditSpace(null); setShowModal(true); }}
+          onClick={openCreate}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-all"
-          style={{ background: "#C0392B" }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "#922B21")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "#C0392B")}
+          style={{ background: '#C0392B' }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = '#922B21')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = '#C0392B')}
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M7 1v12M1 7h12" stroke="white" strokeWidth="2" strokeLinecap="round" />
@@ -67,17 +169,26 @@ export default function AdminSpacesPage() {
         </button>
       </div>
 
+      {actionError && (
+        <div
+          className="mb-4 px-4 py-3 rounded-xl text-sm"
+          style={{ background: '#FDEDEC', color: '#7B241C', border: '1px solid #F1948A' }}
+        >
+          {actionError}
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 mb-8">
         {[
-          { label: "Total espacios", value: spaces.length, color: "#1A1A2E" },
-          { label: "Aulas", value: spaces.filter((s) => s.type === "Aula").length, color: "#1A5276" },
-          { label: "Laboratorios", value: spaces.filter((s) => s.type === "Laboratorio").length, color: "#1E8449" },
-          { label: "En mantenimiento", value: spaces.filter((s) => s.status === "maintenance").length, color: "#C0392B" },
-        ].map((stat) => (
-          <div key={stat.label} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-            <p className="text-sm text-gray-500">{stat.label}</p>
-            <p className="text-3xl font-bold mt-1" style={{ color: stat.color }}>{stat.value}</p>
+          { label: 'Total espacios', value: stats.total, color: '#1A1A2E' },
+          { label: 'Aulas', value: stats.aulas, color: '#1A5276' },
+          { label: 'Laboratorios', value: stats.laboratorios, color: '#1E8449' },
+          { label: 'En mantenimiento', value: stats.mantenimiento, color: '#C0392B' },
+        ].map((s) => (
+          <div key={s.label} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <p className="text-sm text-gray-500">{s.label}</p>
+            <p className="text-3xl font-bold mt-1" style={{ color: s.color }}>{s.value}</p>
           </div>
         ))}
       </div>
@@ -99,12 +210,12 @@ export default function AdminSpacesPage() {
             />
           </div>
           <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-            {types.map((t) => (
+            {TYPES.map((t) => (
               <button
                 key={t}
                 onClick={() => setTypeFilter(t)}
                 className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
-                style={typeFilter === t ? { background: "#C0392B", color: "white" } : { color: "#6B7280" }}
+                style={typeFilter === t ? { background: '#C0392B', color: 'white' } : { color: '#6B7280' }}
               >
                 {t}
               </button>
@@ -117,159 +228,275 @@ export default function AdminSpacesPage() {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr style={{ background: "#F9FAFB", borderBottom: "1px solid #F3F4F6" }}>
-              {["Espacio", "Código", "Piso", "Tipo", "Capacidad", "Equipamiento", "Estado", "Acciones"].map((h) => (
-                <th key={h} className={`text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-4 ${h === "Acciones" ? "text-right" : ""}`}>
+            <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #F3F4F6' }}>
+              {['Espacio', 'Código', 'Área', 'Tipo', 'Capacidad', 'Estado', 'Acciones'].map((h) => (
+                <th
+                  key={h}
+                  className={`text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-4 ${h === 'Acciones' ? 'text-right' : ''}`}
+                >
                   {h}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {filtered.map((space, idx) => {
-              const tc = typeColors[space.type] || typeColors.Aula;
-              const isOp = space.status === "operational";
-              return (
-                <tr
-                  key={space.id}
-                  className="hover:bg-gray-50 transition-colors"
-                  style={{ borderTop: idx > 0 ? "1px solid #F9FAFB" : "none" }}
-                >
-                  <td className="px-5 py-4">
-                    <p className="text-sm font-semibold text-gray-900">{space.name}</p>
-                    <p className="text-xs text-gray-400">{space.area}</p>
-                  </td>
-                  <td className="px-5 py-4">
-                    <span className="text-sm font-mono text-gray-600">{space.code}</span>
-                  </td>
-                  <td className="px-5 py-4">
-                    <span className="text-sm text-gray-600">Piso {space.floor}</span>
-                  </td>
-                  <td className="px-5 py-4">
-                    <span
-                      className="text-xs font-semibold px-2.5 py-1 rounded-full"
-                      style={{ background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}
-                    >
-                      {space.type}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4">
-                    <span className="text-sm text-gray-600">{space.capacity} personas</span>
-                  </td>
-                  <td className="px-5 py-4">
-                    <div className="flex gap-1">
-                      {space.hasAC && <span title="Aire acondicionado" className="text-sm">❄️</span>}
-                      {space.hasProjector && <span title="Proyector" className="text-sm">📽️</span>}
-                      {space.hasComputers && <span title="Computadores" className="text-sm">💻</span>}
-                    </div>
-                  </td>
-                  <td className="px-5 py-4">
-                    <span
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
-                      style={isOp ? { background: "#D5F5E3", color: "#1E8449" } : { background: "#FDEDEC", color: "#C0392B" }}
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: isOp ? "#1E8449" : "#C0392B" }} />
-                      {isOp ? "Operacional" : "Mantenimiento"}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => { setEditSpace(space); setShowModal(true); }}
-                        className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+            {loading ? (
+              <tr>
+                <td colSpan={7} className="py-16 text-center text-gray-400 text-sm">Cargando...</td>
+              </tr>
+            ) : spaces.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="py-16 text-center text-gray-400 text-sm">No se encontraron espacios</td>
+              </tr>
+            ) : (
+              spaces.map((space, idx) => {
+                const tc = typeColors[space.space_type] || typeColors.Aula
+                const st = statusLabels[space.status] || statusLabels.inactive
+                return (
+                  <tr
+                    key={space.id}
+                    className="hover:bg-gray-50 transition-colors"
+                    style={{ borderTop: idx > 0 ? '1px solid #F9FAFB' : 'none' }}
+                  >
+                    <td className="px-5 py-4">
+                      <p className="text-sm font-semibold text-gray-900">{space.name}</p>
+                      {space.description && (
+                        <p className="text-xs text-gray-400 max-w-xs truncate">{space.description}</p>
+                      )}
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="text-sm font-mono text-gray-600">{space.code}</span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="text-sm text-gray-600">{space.area?.name || '—'}</span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span
+                        className="text-xs font-semibold px-2.5 py-1 rounded-full"
+                        style={{ background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}
                       >
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => toggleStatus(space.id)}
-                        className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors"
-                        style={isOp ? { borderColor: "#F1948A", color: "#C0392B" } : { borderColor: "#A9DFBF", color: "#1E8449" }}
+                        {space.space_type}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="text-sm text-gray-600">{space.capacity} personas</span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
+                        style={{ background: st.bg, color: st.color }}
                       >
-                        {isOp ? "Mantenimiento" : "Activar"}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
+                        <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: st.color }} />
+                        {st.label}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => openEdit(space)}
+                          className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                        >
+                          Editar
+                        </button>
+                        {space.is_active !== false && (
+                          <button
+                            onClick={() => handleDelete(space)}
+                            className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors"
+                            style={{ borderColor: '#F1948A', color: '#C0392B' }}
+                          >
+                            Desactivar
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })
+            )}
           </tbody>
         </table>
 
-        {filtered.length === 0 && (
-          <div className="py-16 text-center">
-            <p className="text-gray-400">No se encontraron espacios</p>
-          </div>
-        )}
+        <div
+          className="px-6 py-3 text-xs text-gray-400"
+          style={{ borderTop: '1px solid #F9FAFB' }}
+        >
+          Mostrando {spaces.length} de {total} espacios
+        </div>
       </div>
 
-      {/* Modal */}
+      {/* Modal crear/editar */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-8 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-bold text-gray-900 mb-6">
-              {editSpace ? "Editar espacio" : "Agregar espacio"}
+              {editSpace ? 'Editar espacio' : 'Agregar espacio'}
             </h3>
-            <div className="space-y-4">
+
+            <form onSubmit={handleSave} className="space-y-4">
+              {formError && (
+                <div
+                  className="px-4 py-3 rounded-xl text-sm"
+                  style={{ background: '#FDEDEC', color: '#7B241C', border: '1px solid #F1948A' }}
+                >
+                  {formError}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre</label>
-                  <input defaultValue={editSpace?.name || ""} placeholder="Nombre del espacio" className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100" />
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    required
+                    placeholder="Aula 101"
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Código</label>
-                  <input defaultValue={editSpace?.code || ""} placeholder="SB-XXX" className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100" />
+                  <input
+                    type="text"
+                    value={form.code}
+                    onChange={(e) => setForm({ ...form, code: e.target.value })}
+                    required
+                    placeholder="SB-101"
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                  />
                 </div>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Descripción</label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  rows={2}
+                  placeholder="Descripción opcional del espacio"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 resize-none"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Tipo</label>
-                  <select className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100">
-                    {["Aula", "Laboratorio", "Auditorio"].map((t) => (
-                      <option key={t} selected={editSpace?.type === t}>{t}</option>
+                  <select
+                    value={form.space_type}
+                    onChange={(e) => setForm({ ...form, space_type: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                  >
+                    {['Aula', 'Laboratorio', 'Auditorio', 'Sala'].map((t) => (
+                      <option key={t} value={t}>{t}</option>
                     ))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Capacidad</label>
-                  <input type="number" defaultValue={editSpace?.capacity || ""} placeholder="0" className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100" />
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.capacity}
+                    onChange={(e) => setForm({ ...form, capacity: e.target.value })}
+                    required
+                    placeholder="40"
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                  />
                 </div>
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Piso</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={form.floor}
+                    onChange={(e) => setForm({ ...form, floor: e.target.value })}
+                    placeholder="1"
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Estado</label>
+                  <select
+                    value={form.status}
+                    onChange={(e) => setForm({ ...form, status: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                  >
+                    <option value="operational">Operacional</option>
+                    <option value="maintenance">Mantenimiento</option>
+                    <option value="inactive">Inactivo</option>
+                  </select>
+                </div>
+              </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Equipamiento</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { label: "A/C", key: "hasAC" },
-                    { label: "Proyector", key: "hasProjector" },
-                    { label: "Computadores", key: "hasComputers" },
-                  ].map((eq) => (
-                    <label key={eq.key} className="flex items-center gap-2 p-3 rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-50">
-                      <input type="checkbox" defaultChecked={editSpace?.[eq.key]} className="accent-red-600" />
-                      <span className="text-xs font-medium text-gray-700">{eq.label}</span>
-                    </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Área</label>
+                <select
+                  value={form.area_id}
+                  onChange={(e) => setForm({ ...form, area_id: e.target.value })}
+                  required
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                >
+                  <option value="">Seleccionar área...</option>
+                  {areas.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name} ({a.code})</option>
                   ))}
+                </select>
+              </div>
+
+              {/* Roles permitidos */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Roles con acceso{' '}
+                  <span className="text-gray-400 font-normal">(dejar vacío = todos)</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {ROLES_OPTIONS.map((role) => {
+                    const selected = form.allowed_roles.includes(role)
+                    return (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={() => toggleRole(role)}
+                        className="text-xs font-medium px-3 py-1.5 rounded-full border transition-all"
+                        style={
+                          selected
+                            ? { background: '#C0392B', color: 'white', borderColor: '#C0392B' }
+                            : { background: 'white', color: '#6B7280', borderColor: '#E5E7EB' }
+                        }
+                      >
+                        {role}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowModal(false)}
-                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium text-sm hover:bg-gray-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => setShowModal(false)}
-                className="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm"
-                style={{ background: "#C0392B" }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#922B21")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "#C0392B")}
-              >
-                {editSpace ? "Guardar cambios" : "Agregar"}
-              </button>
-            </div>
+
+              <div className="flex gap-3 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium text-sm hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm transition-all"
+                  style={{ background: saving ? '#922B21' : '#C0392B', opacity: saving ? 0.7 : 1 }}
+                  onMouseEnter={(e) => !saving && (e.currentTarget.style.background = '#922B21')}
+                  onMouseLeave={(e) => !saving && (e.currentTarget.style.background = '#C0392B')}
+                >
+                  {saving ? 'Guardando...' : editSpace ? 'Guardar cambios' : 'Agregar'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
     </div>
-  );
+  )
 }

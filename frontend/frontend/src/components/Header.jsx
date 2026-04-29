@@ -36,6 +36,7 @@ export default function Header({ active = '' }) {
   const navLinks = [
     { href: '/spaces', label: 'Espacios', key: 'spaces' },
     { href: '/reservations', label: 'Mis Reservas', key: 'reservations' },
+    { href: '/profile', label: 'Mi Perfil', key: 'profile' },
   ]
 
   const isAdmin =

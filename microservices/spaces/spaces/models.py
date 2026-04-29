@@ -27,8 +27,15 @@ class Area(models.Model):
 
 class Space(models.Model):
     class Status(models.TextChoices):
-        OPERATIONAL = 'operational', 'Operational'
-        MAINTENANCE = 'maintenance', 'Maintenance'
+        OPERATIONAL = 'operational', 'Operacional'
+        MAINTENANCE = 'maintenance', 'En mantenimiento'
+        INACTIVE = 'inactive', 'Inactivo'
+
+    class SpaceType(models.TextChoices):
+        AULA = 'Aula', 'Aula'
+        LABORATORIO = 'Laboratorio', 'Laboratorio'
+        AUDITORIO = 'Auditorio', 'Auditorio'
+        SALA = 'Sala', 'Sala'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     area = models.ForeignKey(
@@ -38,18 +45,27 @@ class Space(models.Model):
     )
     code = models.CharField(max_length=64)
     name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default='')
     floor = models.PositiveSmallIntegerField(null=True, blank=True)
     capacity = models.PositiveSmallIntegerField(null=True, blank=True)
+    space_type = models.CharField(
+        max_length=32,
+        choices=SpaceType.choices,
+        default=SpaceType.AULA,
+    )
     has_air_conditioning = models.BooleanField(default=False)
     has_computers = models.BooleanField(default=False)
     has_projector = models.BooleanField(default=False)
     has_internet = models.BooleanField(default=False)
     amenities = models.JSONField(default=dict, blank=True)
+    # Roles que pueden reservar este espacio. Lista vacía = todos.
+    allowed_roles = models.JSONField(default=list, blank=True)
     status = models.CharField(
         max_length=32,
         choices=Status.choices,
         default=Status.OPERATIONAL,
     )
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

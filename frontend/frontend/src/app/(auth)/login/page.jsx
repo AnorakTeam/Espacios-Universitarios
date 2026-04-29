@@ -160,7 +160,7 @@ export default function LoginPage() {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-sm font-medium text-gray-700">Contraseña</label>
-                <Link href="#" className="text-sm font-medium" style={{ color: '#C0392B' }}>
+                <Link href="/forgot-password" className="text-sm font-medium" style={{ color: '#C0392B' }}>
                   ¿Olvidaste tu contraseña?
                 </Link>
               </div>

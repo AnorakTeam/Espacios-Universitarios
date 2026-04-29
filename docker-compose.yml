@@ -20,6 +20,8 @@ services:
       - "8082:8000"
     environment:
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,spaces
+      DATABASE_URL: ${SPACES_DATABASE_URL}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-in-production}
     networks:
       - classrooms
 
@@ -30,11 +32,31 @@ services:
       - "8081:8000"
     environment:
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,reservations
+      DATABASE_URL: ${RESERVATIONS_DATABASE_URL}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-in-production}
       USERS_SERVICE_URL: http://users:8000
       SPACES_SERVICE_URL: http://spaces:8000
     depends_on:
       - users
       - spaces
+    networks:
+      - classrooms
+
+  frontend:
+    build:
+      context: ./frontend/frontend
+      args:
+        # URLs que el NAVEGADOR usa — siempre son localhost porque los puertos
+        # están expuestos al host via los 'ports' de arriba
+        NEXT_PUBLIC_USERS_API_URL: http://localhost:8080
+        NEXT_PUBLIC_SPACES_API_URL: http://localhost:8082
+        NEXT_PUBLIC_RESERVATIONS_API_URL: http://localhost:8081
+    ports:
+      - "3000:3000"
+    depends_on:
+      - users
+      - spaces
+      - reservations
     networks:
       - classrooms
 

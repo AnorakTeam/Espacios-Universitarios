@@ -26,6 +26,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .auth import (
+    decode_access_token,
     generate_access_token,
     get_authenticated_user,
     hash_password,
@@ -33,6 +34,8 @@ from .auth import (
 )
 from .models import Role, User, UserSession
 from .serializers import (
+    AdminCreateUserSerializer,
+    AdminUpdateUserSerializer,
     LoginSerializer,
     RegisterSerializer,
     UpdateProfileSerializer,
@@ -54,9 +57,21 @@ def _get_client_ip(request) -> str | None:
     return request.META.get('REMOTE_ADDR')
 
 
+def _require_admin(request):
+    """Verifica que el usuario autenticado sea admin o administrativo."""
+    user, error = get_authenticated_user(request)
+    if error:
+        return None, error
+    role_name = (user.role.name if user.role else '').lower()
+    if role_name not in ('admin', 'administrativo'):
+        return None, Response({'detail': 'Se requieren privilegios de administrador.'}, status=403)
+    return user, None
+
+
 def _build_auth_response(user: User, ip: str | None) -> dict:
     """Crea access + refresh token y registra la sesión."""
-    access_token = generate_access_token(str(user.id))
+    role_name = user.role.name if user.role else ''
+    access_token = generate_access_token(str(user.id), role_name=role_name)
     session = UserSession.create_for_user(
         user=user,
         ip_address=ip,
@@ -363,6 +378,191 @@ class UserResolveAPIView(APIView):
             return Response({'detail': 'Usuario no encontrado.'}, status=404)
 
         return Response(UserPublicSerializer(user).data)
+
+
+# ---------------------------------------------------------------------------
+# HU-04 — Restablecer contraseña con token temporal
+# ---------------------------------------------------------------------------
+
+class ResetPasswordAPIView(APIView):
+    """POST /api/v1/auth/reset-password"""
+
+    def post(self, request):
+        token = request.data.get('token', '').strip()
+        new_password = request.data.get('new_password', '')
+
+        if not token or not new_password:
+            return Response(
+                {'detail': 'Se requieren los campos token y new_password.'},
+                status=400,
+            )
+        if len(new_password) < 8:
+            return Response(
+                {'detail': 'La contraseña debe tener al menos 8 caracteres.'},
+                status=400,
+            )
+
+        try:
+            payload = decode_access_token(token)
+            if payload.get('type') != 'access':
+                return Response({'detail': 'Token inválido.'}, status=400)
+            user_id = payload.get('user_id')
+            user = User.objects.filter(pk=user_id, is_active=True).first()
+            if not user:
+                return Response({'detail': 'Token inválido o usuario no encontrado.'}, status=400)
+        except Exception:
+            return Response({'detail': 'Token inválido o expirado.'}, status=400)
+
+        user.password_hash = hash_password(new_password)
+        user.save(update_fields=['password_hash', 'updated_at'])
+        UserSession.objects.filter(user=user).delete()
+
+        logger.info('Contraseña restablecida para: %s', user.email)
+        return Response({'detail': 'Contraseña actualizada exitosamente.'})
+
+
+# ---------------------------------------------------------------------------
+# HU-16, 17, 18, 19 — Gestión de usuarios (Admin)
+# ---------------------------------------------------------------------------
+
+class AdminUserListCreateAPIView(APIView):
+    """
+    GET  /api/v1/admin/users/ — Listar todos los usuarios (HU-17)
+    POST /api/v1/admin/users/ — Crear usuario (HU-16)
+    """
+
+    def get(self, request):
+        admin_user, error = _require_admin(request)
+        if error:
+            return error
+
+        qs = User.objects.select_related('role').order_by('-created_at')
+
+        search = request.query_params.get('search', '').strip()
+        role_name = request.query_params.get('role', '').strip()
+        is_active_param = request.query_params.get('is_active', '').strip()
+
+        if search:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(email__icontains=search) |
+                Q(university_code__icontains=search)
+            )
+        if role_name:
+            qs = qs.filter(role__name__iexact=role_name)
+        if is_active_param in ('true', 'false'):
+            qs = qs.filter(is_active=(is_active_param == 'true'))
+
+        return Response({
+            'count': qs.count(),
+            'results': UserPublicSerializer(qs, many=True).data,
+        })
+
+    def post(self, request):
+        admin_user, error = _require_admin(request)
+        if error:
+            return error
+
+        serializer = AdminCreateUserSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'errors': serializer.errors}, status=400)
+
+        data = serializer.validated_data
+        role_name = data.get('role_name', 'Estudiante')
+        role = Role.objects.filter(name__iexact=role_name).first()
+        if not role:
+            return Response({'detail': f'El rol "{role_name}" no existe.'}, status=400)
+
+        with transaction.atomic():
+            user = User.objects.create(
+                email=data['email'],
+                university_code=data['university_code'],
+                password_hash=hash_password(data['password']),
+                first_name=data['first_name'],
+                last_name=data['last_name'],
+                role=role,
+                is_active=data.get('is_active', True),
+            )
+
+        logger.info('Admin %s creó usuario: %s', admin_user.university_code, user.university_code)
+        return Response(UserPublicSerializer(user).data, status=201)
+
+
+class AdminUserDetailAPIView(APIView):
+    """
+    GET    /api/v1/admin/users/<uuid>/ — Detalle (HU-17)
+    PATCH  /api/v1/admin/users/<uuid>/ — Editar (HU-18)
+    DELETE /api/v1/admin/users/<uuid>/ — Desactivar (HU-19)
+    """
+
+    def get(self, request, pk):
+        admin_user, error = _require_admin(request)
+        if error:
+            return error
+        user = get_object_or_404(User.objects.select_related('role'), pk=pk)
+        return Response(UserPublicSerializer(user).data)
+
+    def patch(self, request, pk):
+        admin_user, error = _require_admin(request)
+        if error:
+            return error
+        user = get_object_or_404(User.objects.select_related('role'), pk=pk)
+
+        serializer = AdminUpdateUserSerializer(data=request.data, context={'user': user})
+        if not serializer.is_valid():
+            return Response({'errors': serializer.errors}, status=400)
+
+        data = serializer.validated_data
+        updated = []
+
+        if 'first_name' in data:
+            user.first_name = data['first_name']
+            updated.append('first_name')
+        if 'last_name' in data:
+            user.last_name = data['last_name']
+            updated.append('last_name')
+        if 'email' in data:
+            user.email = data['email']
+            updated.append('email')
+        if 'is_active' in data:
+            user.is_active = data['is_active']
+            updated.append('is_active')
+        if 'role_name' in data:
+            role = Role.objects.filter(name__iexact=data['role_name']).first()
+            if not role:
+                return Response({'detail': f'El rol "{data["role_name"]}" no existe.'}, status=400)
+            user.role = role
+            updated.append('role')
+
+        if not updated:
+            return Response({'detail': 'No se enviaron campos para actualizar.'}, status=400)
+
+        plain_fields = [f for f in updated if f != 'role'] + ['updated_at']
+        if 'role' in updated:
+            plain_fields.append('role')
+        user.save(update_fields=plain_fields)
+        user.refresh_from_db()
+
+        logger.info('Admin %s editó usuario: %s', admin_user.university_code, user.university_code)
+        return Response(UserPublicSerializer(user).data)
+
+    def delete(self, request, pk):
+        admin_user, error = _require_admin(request)
+        if error:
+            return error
+        user = get_object_or_404(User, pk=pk)
+
+        if str(user.pk) == str(admin_user.pk):
+            return Response({'detail': 'No puedes desactivar tu propia cuenta.'}, status=400)
+
+        user.is_active = False
+        user.save(update_fields=['is_active', 'updated_at'])
+        UserSession.objects.filter(user=user).delete()
+
+        logger.info('Admin %s desactivó usuario: %s', admin_user.university_code, user.university_code)
+        return Response({'detail': 'Usuario desactivado exitosamente.'})
 
 
 # ---------------------------------------------------------------------------
