@@ -11,13 +11,9 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# NEXT_PUBLIC_* vars are embedded at build time by Next.js
-ARG NEXT_PUBLIC_USERS_API_URL=http://localhost:8080
-ARG NEXT_PUBLIC_SPACES_API_URL=http://localhost:8082
-ARG NEXT_PUBLIC_RESERVATIONS_API_URL=http://localhost:8081
-ENV NEXT_PUBLIC_USERS_API_URL=$NEXT_PUBLIC_USERS_API_URL
-ENV NEXT_PUBLIC_SPACES_API_URL=$NEXT_PUBLIC_SPACES_API_URL
-ENV NEXT_PUBLIC_RESERVATIONS_API_URL=$NEXT_PUBLIC_RESERVATIONS_API_URL
+# Single gateway URL — embedded at build time by Next.js
+ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 RUN npm run build
 
