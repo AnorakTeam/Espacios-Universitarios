@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import Header from "@/components/Header";
 
 const SPACE = {
   id: "1",
@@ -121,9 +120,7 @@ export default function SpaceDetailPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header active="spaces" />
-
+    <div>
       <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">

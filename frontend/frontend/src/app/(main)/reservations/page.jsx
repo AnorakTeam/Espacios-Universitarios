@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import Header from "@/components/Header";
 
 const RESERVATIONS = [
   {
@@ -116,9 +115,7 @@ export default function ReservationsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header active="reservations" />
-
+    <div>
       <main className="max-w-5xl mx-auto px-6 py-8">
         {/* Encabezado */}
         <div className="flex items-center justify-between mb-8">

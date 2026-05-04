@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import Header from '@/components/Header'
 import { spacesApi } from '@/lib/apiClient'
 
 const typeColors = {
@@ -79,9 +78,7 @@ export default function SpacesPage() {
   const statuses = ['Todos', 'Disponible', 'Mantenimiento']
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header active="spaces" />
-
+    <div>
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">Catálogo de Espacios</h1>

@@ -2,14 +2,22 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import UFPSLogo from './UFPSLogo'
 import { getUser, getRefreshToken, clearSession } from '@/lib/authStorage'
 import { authApi } from '@/lib/apiClient'
 
-export default function Header({ active = '' }) {
+export default function Header() {
   const router = useRouter()
+  const pathname = usePathname()
   const [user, setUser] = useState(null)
+
+  // Detect active nav from current path
+  const active = pathname.startsWith('/profile')
+    ? 'profile'
+    : pathname.startsWith('/reservations')
+      ? 'reservations'
+      : 'spaces'
 
   useEffect(() => {
     setUser(getUser())
