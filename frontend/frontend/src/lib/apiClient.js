@@ -152,3 +152,25 @@ export const spacesApi = {
       auth: true,
     }),
 }
+
+// ---------------------------------------------------------------------------
+// Reservations (HU-06, 07, 08)
+// ---------------------------------------------------------------------------
+export const reservationsApi = {
+  list: (params = {}) => {
+    const qs = new URLSearchParams(params).toString()
+    return request(`/api/v1/reservations/${qs ? `?${qs}` : ''}`, { auth: true })
+  },
+
+  get: (id) => request(`/api/v1/reservations/${id}/`, { auth: true }),
+
+  create: (payload) =>
+    request('/api/v1/reservations/', { method: 'POST', body: payload, auth: true }),
+
+  cancel: (id) =>
+    request(`/api/v1/reservations/${id}/`, {
+      method: 'PATCH',
+      body: { status: 'cancelled' },
+      auth: true,
+    }),
+}

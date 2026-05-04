@@ -1,73 +1,10 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import Link from "next/link";
+import { useState, useEffect, useCallback } from "react"
+import Link from "next/link"
+import { reservationsApi } from "@/lib/apiClient"
 
-const RESERVATIONS = [
-  {
-    id: "r1",
-    space: "Laboratorio de Sistemas",
-    code: "SB-201",
-    type: "Laboratorio",
-    date: "2025-04-14",
-    start: 8,
-    end: 10,
-    status: "confirmed",
-    createdAt: "2025-04-10",
-  },
-  {
-    id: "r2",
-    space: "Aula 101",
-    code: "SB-101",
-    type: "Aula",
-    date: "2025-04-16",
-    start: 14,
-    end: 16,
-    status: "confirmed",
-    createdAt: "2025-04-11",
-  },
-  {
-    id: "r3",
-    space: "Sala de Conferencias A",
-    code: "SB-301",
-    type: "Auditorio",
-    date: "2025-04-05",
-    start: 9,
-    end: 12,
-    status: "cancelled",
-    createdAt: "2025-04-01",
-  },
-  {
-    id: "r4",
-    space: "Aula 102",
-    code: "SB-102",
-    type: "Aula",
-    date: "2025-03-28",
-    start: 10,
-    end: 11,
-    status: "cancelled",
-    createdAt: "2025-03-25",
-  },
-  {
-    id: "r5",
-    space: "Laboratorio de Redes",
-    code: "SB-202",
-    type: "Laboratorio",
-    date: "2025-03-20",
-    start: 13,
-    end: 15,
-    status: "confirmed",
-    createdAt: "2025-03-18",
-  },
-];
-
-const typeColors = {
-  Aula: { bg: "#EBF5FB", color: "#1A5276" },
-  Laboratorio: { bg: "#EAFAF1", color: "#1E8449" },
-  Auditorio: { bg: "#FEF9E7", color: "#9A7D0A" },
-};
-
-const today = new Date().toISOString().split("T")[0];
+const today = new Date().toISOString().split("T")[0]
 
 function StatusBadge({ status }) {
   if (status === "confirmed") {
@@ -79,7 +16,7 @@ function StatusBadge({ status }) {
         <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
         Confirmada
       </span>
-    );
+    )
   }
   return (
     <span
@@ -89,30 +26,62 @@ function StatusBadge({ status }) {
       <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
       Cancelada
     </span>
-  );
+  )
 }
 
 export default function ReservationsPage() {
-  const [activeTab, setActiveTab] = useState("active");
-  const [cancelId, setCancelId] = useState(null);
-  const [cancelled, setCancelled] = useState([]);
+  const [reservations, setReservations] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [activeTab, setActiveTab] = useState("active")
+  const [cancelId, setCancelId] = useState(null)
+  const [cancelling, setCancelling] = useState(false)
 
-  const active = RESERVATIONS.filter(
-    (r) => r.status === "confirmed" && r.date >= today && !cancelled.includes(r.id)
-  );
-  const history = RESERVATIONS.filter(
-    (r) =>
-      r.status === "cancelled" ||
-      r.date < today ||
-      cancelled.includes(r.id)
-  );
+  const fetchReservations = useCallback(async () => {
+    try {
+      setError("")
+      const data = await reservationsApi.list()
+      setReservations(data)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-  const displayed = activeTab === "active" ? active : history;
+  useEffect(() => {
+    fetchReservations()
+  }, [fetchReservations])
 
-  const handleCancel = () => {
-    setCancelled([...cancelled, cancelId]);
-    setCancelId(null);
-  };
+  const active = reservations.filter(
+    (r) => r.status === "confirmed" && r.reservation_date >= today
+  )
+  const history = reservations.filter(
+    (r) => r.status === "cancelled" || r.reservation_date < today
+  )
+
+  const displayed = activeTab === "active" ? active : history
+
+  const handleCancel = async () => {
+    setCancelling(true)
+    try {
+      await reservationsApi.cancel(cancelId)
+      setCancelId(null)
+      await fetchReservations()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setCancelling(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-64">
+        <div className="text-gray-400 text-sm">Cargando reservas...</div>
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -140,22 +109,33 @@ export default function ReservationsPage() {
           </Link>
         </div>
 
-        {/* Estadísticas rápidas */}
+        {/* Error */}
+        {error && (
+          <div
+            className="mb-6 px-4 py-3 rounded-xl text-sm"
+            style={{ background: "#FDEDEC", color: "#7B241C", border: "1px solid #F1948A" }}
+          >
+            {error}
+          </div>
+        )}
+
+        {/* Estadísticas */}
         <div className="grid grid-cols-3 gap-4 mb-8">
           {[
-            { label: "Reservas activas", value: active.length, color: "#C0392B", bg: "#FDEDEC" },
-            { label: "Total realizadas", value: RESERVATIONS.length, color: "#1A5276", bg: "#EBF5FB" },
-            { label: "Canceladas", value: RESERVATIONS.filter((r) => r.status === "cancelled").length + cancelled.length, color: "#9A7D0A", bg: "#FEF9E7" },
+            { label: "Reservas activas", value: active.length, color: "#C0392B" },
+            { label: "Total realizadas", value: reservations.length, color: "#1A5276" },
+            {
+              label: "Canceladas",
+              value: reservations.filter((r) => r.status === "cancelled").length,
+              color: "#9A7D0A",
+            },
           ].map((stat) => (
             <div
               key={stat.label}
               className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5"
             >
               <p className="text-sm text-gray-500">{stat.label}</p>
-              <p
-                className="text-3xl font-bold mt-1"
-                style={{ color: stat.color }}
-              >
+              <p className="text-3xl font-bold mt-1" style={{ color: stat.color }}>
                 {stat.value}
               </p>
             </div>
@@ -183,7 +163,7 @@ export default function ReservationsPage() {
           ))}
         </div>
 
-        {/* Lista de reservas */}
+        {/* Lista */}
         {displayed.length === 0 ? (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-16 text-center">
             <div
@@ -197,7 +177,9 @@ export default function ReservationsPage() {
                 <path d="M9 16h10M9 20h6" stroke="#C0392B" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
             </div>
-            <p className="text-gray-500 font-medium">No tienes reservas {activeTab === "active" ? "activas" : "en el historial"}</p>
+            <p className="text-gray-500 font-medium">
+              No tienes reservas {activeTab === "active" ? "activas" : "en el historial"}
+            </p>
             {activeTab === "active" && (
               <Link href="/spaces">
                 <button
@@ -212,40 +194,31 @@ export default function ReservationsPage() {
         ) : (
           <div className="space-y-3">
             {displayed.map((r) => {
-              const tc = typeColors[r.type] || typeColors.Aula;
-              const isCancelledNow = cancelled.includes(r.id);
-              const effectiveStatus = isCancelledNow ? "cancelled" : r.status;
-              const isActive = effectiveStatus === "confirmed" && r.date >= today;
+              const isActive = r.status === "confirmed" && r.reservation_date >= today
 
               return (
                 <div
                   key={r.id}
                   className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex items-center gap-5"
                 >
-                  {/* Tipo badge */}
+                  {/* Icon */}
                   <div
                     className="w-12 h-12 rounded-xl flex-shrink-0 flex items-center justify-center"
-                    style={{ background: tc.bg }}
+                    style={{ background: "#EBF5FB" }}
                   >
-                    <span className="text-xl">
-                      {r.type === "Laboratorio" ? "🧪" : r.type === "Auditorio" ? "🏛️" : "📚"}
-                    </span>
+                    <span className="text-xl">📅</span>
                   </div>
 
-                  {/* Información */}
+                  {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
                       <h3 className="font-semibold text-gray-900 text-sm truncate">
-                        {r.space}
+                        Espacio reservado
                       </h3>
-                      <span
-                        className="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0"
-                        style={{ background: tc.bg, color: tc.color }}
-                      >
-                        {r.type}
-                      </span>
                     </div>
-                    <p className="text-xs text-gray-400">{r.code}</p>
+                    <p className="text-xs text-gray-400 font-mono">
+                      {r.space_id.substring(0, 8)}...
+                    </p>
                     <div className="flex items-center gap-4 mt-2">
                       <span className="flex items-center gap-1 text-xs text-gray-500">
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -253,39 +226,35 @@ export default function ReservationsPage() {
                           <path d="M4 2V1M8 2V1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
                           <path d="M1 5h10" stroke="currentColor" strokeWidth="1.2" />
                         </svg>
-                        {r.date}
+                        {r.reservation_date}
                       </span>
                       <span className="flex items-center gap-1 text-xs text-gray-500">
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                           <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.2" />
                           <path d="M6 3.5V6l1.5 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
                         </svg>
-                        {r.start}:00 – {r.end}:00
+                        {r.start_hour}:00 – {r.end_hour}:00
                       </span>
                     </div>
                   </div>
 
                   {/* Estado y acciones */}
                   <div className="flex items-center gap-3 flex-shrink-0">
-                    <StatusBadge status={effectiveStatus} />
+                    <StatusBadge status={r.status} />
                     {isActive && (
                       <button
                         onClick={() => setCancelId(r.id)}
                         className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-all"
                         style={{ borderColor: "#F1948A", color: "#C0392B" }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = "#FDEDEC";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = "transparent";
-                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "#FDEDEC")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                       >
                         Cancelar
                       </button>
                     )}
                   </div>
                 </div>
-              );
+              )
             })}
           </div>
         )}
@@ -313,23 +282,23 @@ export default function ReservationsPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setCancelId(null)}
+                disabled={cancelling}
                 className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium text-sm hover:bg-gray-50 transition-colors"
               >
                 No cancelar
               </button>
               <button
                 onClick={handleCancel}
+                disabled={cancelling}
                 className="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm transition-all"
-                style={{ background: "#C0392B" }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#922B21")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "#C0392B")}
+                style={{ background: cancelling ? "#922B21" : "#C0392B", opacity: cancelling ? 0.7 : 1 }}
               >
-                Sí, cancelar
+                {cancelling ? "Cancelando..." : "Sí, cancelar"}
               </button>
             </div>
           </div>
         </div>
       )}
     </div>
-  );
+  )
 }
