@@ -106,6 +106,32 @@ class ReservationListCreateAPIView(APIView):
         return Response(_serialize_reservation(reservation), status=201)
 
 
+class SpaceAvailabilityAPIView(APIView):
+    """
+    GET /api/v1/reservations/by-space/<space_id>/?date=YYYY-MM-DD
+    Returns confirmed reservation time slots for a space on a given date.
+    No auth required — only exposes occupied hours, not user data.
+    """
+
+    def get(self, request, space_id):
+        date_str = request.query_params.get('date')
+        if not date_str:
+            return Response({'detail': 'Se requiere el parámetro ?date=YYYY-MM-DD.'}, status=400)
+
+        qs = Reservation.objects.filter(
+            space_id=space_id,
+            reservation_date=date_str,
+            status=Reservation.Status.CONFIRMED,
+        ).order_by('start_hour')
+
+        slots = [
+            {'start_hour': r.start_hour, 'end_hour': r.end_hour}
+            for r in qs
+        ]
+
+        return Response({'date': date_str, 'space_id': str(space_id), 'reserved_slots': slots})
+
+
 class ReservationDetailAPIView(APIView):
     """
     GET   /api/v1/reservations/<id>/  — detail

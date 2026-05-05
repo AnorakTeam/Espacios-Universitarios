@@ -59,8 +59,9 @@ export default function AdminUsersPage() {
       const data = await adminUsersApi.list(params)
       setUsers(data.results || data)
       setTotal(data.count ?? (data.results?.length ?? (Array.isArray(data) ? data.length : 0)))
-    } catch {
+    } catch (err) {
       setUsers([])
+      setActionError('Error al cargar usuarios: ' + err.message)
     } finally {
       setLoading(false)
     }

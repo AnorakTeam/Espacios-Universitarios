@@ -173,4 +173,8 @@ export const reservationsApi = {
       body: { status: 'cancelled' },
       auth: true,
     }),
+
+  // Consultar horas ocupadas de un espacio en una fecha
+  bySpace: (spaceId, date) =>
+    request(`/api/v1/reservations/by-space/${spaceId}/?date=${date}`),
 }

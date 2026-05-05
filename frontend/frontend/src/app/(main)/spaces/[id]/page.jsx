@@ -7,14 +7,13 @@ import { spacesApi, reservationsApi } from "@/lib/apiClient"
 import { getUser } from "@/lib/authStorage"
 
 const DAYS_OF_WEEK = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]
-const HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
 
 function getWeekDays(baseDate) {
   const days = []
   const dow = baseDate.getDay()
   const monday = new Date(baseDate)
   monday.setDate(baseDate.getDate() - dow + (dow === 0 ? -6 : 1))
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 7; i++) {
     const d = new Date(monday)
     d.setDate(monday.getDate() + i)
     days.push(d)
@@ -58,6 +57,7 @@ export default function SpaceDetailPage() {
   const [selectedDate, setSelectedDate] = useState(fmt(todayDate))
   const [selectedStart, setSelectedStart] = useState(null)
   const [selectedEnd, setSelectedEnd] = useState(null)
+  const [reservedHours, setReservedHours] = useState([])
   const [reserving, setReserving] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [reserveError, setReserveError] = useState("")
@@ -70,7 +70,63 @@ export default function SpaceDetailPage() {
       .finally(() => setLoading(false))
   }, [spaceId])
 
+  // Fetch reserved slots when space or date changes
+  const fetchAvailability = useCallback(async () => {
+    if (!spaceId || !selectedDate) return
+    try {
+      const data = await reservationsApi.bySpace(spaceId, selectedDate)
+      // Build set of occupied hours from half-open slots [start, end)
+      const occupied = []
+      for (const slot of (data.reserved_slots || [])) {
+        for (let h = slot.start_hour; h < slot.end_hour; h++) {
+          occupied.push(h)
+        }
+      }
+      setReservedHours(occupied)
+    } catch {
+      setReservedHours([])
+    }
+  }, [spaceId, selectedDate])
+
+  useEffect(() => {
+    fetchAvailability()
+  }, [fetchAvailability])
+
+  // Get operating hours for the selected day
+  const getHoursForDay = () => {
+    if (!space?.operating_hours?.length) {
+      // Fallback: all hours 7-19
+      return [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    }
+
+    const dateObj = new Date(selectedDate + "T12:00:00")
+    // JS: 0=Sun, model: 0=Mon → convert
+    const jsDay = dateObj.getDay()
+    const modelDay = jsDay === 0 ? 6 : jsDay - 1
+
+    const daySchedule = space.operating_hours.find((h) => h.day_of_week === modelDay)
+    if (!daySchedule) return [] // No opera este día
+
+    const opensHour = parseInt(daySchedule.opens_at?.split(":")[0], 10)
+    const closesHour = parseInt(daySchedule.closes_at?.split(":")[0], 10)
+
+    const hours = []
+    for (let h = opensHour; h < closesHour; h++) {
+      hours.push(h)
+    }
+    return hours
+  }
+
+  const availableHours = space ? getHoursForDay() : []
   const weekDays = getWeekDays(baseDate)
+
+  // Check if a day has operating hours
+  const dayHasSchedule = (date) => {
+    if (!space?.operating_hours?.length) return true
+    const jsDay = date.getDay()
+    const modelDay = jsDay === 0 ? 6 : jsDay - 1
+    return space.operating_hours.some((h) => h.day_of_week === modelDay)
+  }
 
   const prevWeek = () => {
     const d = new Date(baseDate)
@@ -85,12 +141,23 @@ export default function SpaceDetailPage() {
   }
 
   const handleHourClick = (hour) => {
+    if (reservedHours.includes(hour)) return
     if (!selectedStart || (selectedStart && selectedEnd)) {
       setSelectedStart(hour)
       setSelectedEnd(null)
     } else {
       if (hour > selectedStart) {
-        setSelectedEnd(hour + 1)
+        // Check no reserved hour in between
+        let blocked = false
+        for (let h = selectedStart; h <= hour; h++) {
+          if (reservedHours.includes(h)) { blocked = true; break }
+        }
+        if (blocked) {
+          setSelectedStart(hour)
+          setSelectedEnd(null)
+        } else {
+          setSelectedEnd(hour + 1)
+        }
       } else {
         setSelectedStart(hour)
         setSelectedEnd(null)
@@ -125,6 +192,8 @@ export default function SpaceDetailPage() {
         end_hour: selectedEnd,
       })
       setShowModal(true)
+      // Refresh availability
+      await fetchAvailability()
     } catch (err) {
       setReserveError(err.message)
     } finally {
@@ -153,7 +222,7 @@ export default function SpaceDetailPage() {
     )
   }
 
-  // Map operating hours for display
+  // Map operating hours for sidebar display
   const dayNames = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
   const schedule = (space.operating_hours || [])
     .sort((a, b) => a.day_of_week - b.day_of_week)
@@ -170,15 +239,13 @@ export default function SpaceDetailPage() {
       <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
-          <Link href="/spaces" className="hover:text-gray-700 transition-colors">
-            Espacios
-          </Link>
+          <Link href="/spaces" className="hover:text-gray-700 transition-colors">Espacios</Link>
           <span>/</span>
           <span className="text-gray-900 font-medium">{space.name}</span>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Columna izquierda — info del espacio */}
+          {/* Left column — space info */}
           <div className="lg:col-span-1 space-y-5">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <div
@@ -198,14 +265,11 @@ export default function SpaceDetailPage() {
                   {space.status === "operational" ? "Disponible" : "No disponible"}
                 </span>
               </div>
-
               <div className="p-5">
                 <div className="flex items-start justify-between">
                   <div>
                     <h1 className="text-xl font-bold text-gray-900">{space.name}</h1>
-                    <p className="text-sm text-gray-400 mt-0.5">
-                      {space.code} · {space.area?.name}
-                    </p>
+                    <p className="text-sm text-gray-400 mt-0.5">{space.code} · {space.area?.name}</p>
                   </div>
                   <span
                     className="text-xs font-medium px-2 py-1 rounded-full"
@@ -214,11 +278,9 @@ export default function SpaceDetailPage() {
                     {spaceType}
                   </span>
                 </div>
-
                 {space.description && (
                   <p className="text-sm text-gray-600 mt-3 leading-relaxed">{space.description}</p>
                 )}
-
                 <div className="flex items-center gap-3 mt-4 p-3 rounded-xl" style={{ background: "#F9FAFB" }}>
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                     <circle cx="10" cy="7" r="3" stroke="#6B7280" strokeWidth="1.5" />
@@ -232,7 +294,7 @@ export default function SpaceDetailPage() {
               </div>
             </div>
 
-            {/* Amenidades */}
+            {/* Amenities */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
               <h3 className="font-semibold text-gray-900 mb-3 text-sm">Equipamiento</h3>
               <div className="space-y-2">
@@ -243,7 +305,7 @@ export default function SpaceDetailPage() {
               </div>
             </div>
 
-            {/* Horarios */}
+            {/* Operating hours */}
             {schedule.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
                 <h3 className="font-semibold text-gray-900 mb-3 text-sm">Horario de atención</h3>
@@ -259,7 +321,7 @@ export default function SpaceDetailPage() {
             )}
           </div>
 
-          {/* Columna derecha — disponibilidad */}
+          {/* Right column — availability */}
           <div className="lg:col-span-2 space-y-5">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <div className="flex items-center justify-between mb-6">
@@ -279,67 +341,93 @@ export default function SpaceDetailPage() {
               </div>
 
               {/* Day selector */}
-              <div className="grid grid-cols-6 gap-2 mb-6">
+              <div className="grid grid-cols-7 gap-2 mb-6">
                 {weekDays.map((d) => {
                   const key = fmt(d)
                   const isSel = selectedDate === key
                   const isToday = fmt(new Date()) === key
+                  const hasSchedule = dayHasSchedule(d)
                   return (
                     <button
                       key={key}
-                      onClick={() => { setSelectedDate(key); setSelectedStart(null); setSelectedEnd(null) }}
+                      onClick={() => {
+                        setSelectedDate(key)
+                        setSelectedStart(null)
+                        setSelectedEnd(null)
+                      }}
+                      disabled={!hasSchedule}
                       className="flex flex-col items-center py-3 rounded-xl transition-all"
                       style={
-                        isSel
-                          ? { background: "#C0392B", color: "white" }
-                          : isToday
-                            ? { background: "#FDEDEC", color: "#C0392B", border: "1px solid #F1948A" }
-                            : { background: "#F9FAFB", color: "#6B7280" }
+                        !hasSchedule
+                          ? { background: "#F3F4F6", color: "#D1D5DB", cursor: "not-allowed" }
+                          : isSel
+                            ? { background: "#C0392B", color: "white" }
+                            : isToday
+                              ? { background: "#FDEDEC", color: "#C0392B", border: "1px solid #F1948A" }
+                              : { background: "#F9FAFB", color: "#6B7280" }
                       }
                     >
                       <span className="text-xs font-medium">{DAYS_OF_WEEK[d.getDay()]}</span>
                       <span className="text-lg font-bold mt-0.5">{d.getDate()}</span>
+                      {!hasSchedule && <span className="text-[9px] mt-0.5">Cerrado</span>}
                     </button>
                   )
                 })}
               </div>
 
               {/* Hours grid */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="flex items-center gap-1.5 text-xs text-gray-500">
-                    <span className="w-3 h-3 rounded-sm bg-gray-100 border border-gray-200 inline-block" />
-                    Disponible
-                  </span>
-                  <span className="flex items-center gap-1.5 text-xs text-gray-500">
-                    <span className="w-3 h-3 rounded-sm inline-block" style={{ background: "#C0392B" }} />
-                    Seleccionado
-                  </span>
+              {availableHours.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-gray-400 font-medium">Este espacio no opera el día seleccionado</p>
+                  <p className="text-gray-300 text-sm mt-1">Selecciona otro día de la semana</p>
                 </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <span className="w-3 h-3 rounded-sm bg-gray-100 border border-gray-200 inline-block" />
+                      Disponible
+                    </span>
+                    <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <span className="w-3 h-3 rounded-sm bg-red-100 border border-red-200 inline-block" />
+                      Reservado
+                    </span>
+                    <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <span className="w-3 h-3 rounded-sm inline-block" style={{ background: "#C0392B" }} />
+                      Seleccionado
+                    </span>
+                  </div>
 
-                <div className="grid grid-cols-7 gap-1.5">
-                  {HOURS.map((hour) => {
-                    const isSel = isSelected(hour)
-                    return (
-                      <button
-                        key={hour}
-                        onClick={() => handleHourClick(hour)}
-                        className="flex flex-col items-center py-3 rounded-xl text-xs font-medium transition-all"
-                        style={
-                          isSel
-                            ? { background: "#C0392B", color: "white" }
-                            : { background: "#F9FAFB", color: "#374151" }
-                        }
-                      >
-                        <span className="font-bold">{hour}:00</span>
-                        <span className="text-[10px] opacity-70 mt-0.5">Libre</span>
-                      </button>
-                    )
-                  })}
+                  <div className="grid grid-cols-7 gap-1.5">
+                    {availableHours.map((hour) => {
+                      const isRes = reservedHours.includes(hour)
+                      const isSel = isSelected(hour)
+                      return (
+                        <button
+                          key={hour}
+                          onClick={() => handleHourClick(hour)}
+                          disabled={isRes}
+                          className="flex flex-col items-center py-3 rounded-xl text-xs font-medium transition-all"
+                          style={
+                            isSel
+                              ? { background: "#C0392B", color: "white" }
+                              : isRes
+                                ? { background: "#FDEDEC", color: "#F1948A", cursor: "not-allowed" }
+                                : { background: "#F9FAFB", color: "#374151" }
+                          }
+                        >
+                          <span className="font-bold">{hour}:00</span>
+                          <span className="text-[10px] opacity-70 mt-0.5">
+                            {isRes ? "Ocupado" : "Libre"}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {!selectedStart && (
+              {availableHours.length > 0 && !selectedStart && (
                 <p className="text-xs text-gray-400 mt-4 text-center">
                   Haz clic en una hora para comenzar a seleccionar tu bloque de tiempo
                 </p>

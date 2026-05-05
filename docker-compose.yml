@@ -51,7 +51,7 @@ services:
       USERS_SERVICE_URL: http://users:8000
       SPACES_SERVICE_URL: http://spaces:8000
     depends_on:
-      - users
+      - users   
       - spaces
     networks:
       - classrooms
